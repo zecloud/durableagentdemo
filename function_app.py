@@ -153,17 +153,17 @@ redis_callback = RedisStreamCallback()
 # Create the Video Script Research Assistant agent
 def create_VideoScriptResearchAssistant_agent():
     """Create the Video Script Research Assistant agent with tools."""
-    with MCPStreamableHTTPTool(
+    markitdownmcp_server=MCPStreamableHTTPTool(
                 name="markitdown", 
                 url=f"{os.environ.get("markitdownmcpazfuncurl")}/mcp",
                 headers ={"x-functions-key": os.environ.get("markitdownmcpazfunckey")},
-            ) as markitdownmcp_server:
-        with MCPStreamableHTTPTool(
-                    name="markitdown", 
+            )
+    arxivmcp_server = MCPStreamableHTTPTool(
+                    name="arxiv", 
                     url=f"{os.environ.get("arxivmcpazfuncurl")}/mcp",
                     headers ={"x-functions-key": os.environ.get("arxivazfunckey")},
-                ) as arxivmcp_server:
-            return AzureOpenAIChatClient().as_agent(
+                )
+    return AzureOpenAIChatClient().as_agent(
                 name=" VideoScriptResearchAssistant",
                 instructions="""You are a Video Script Research Assistant in an iterative workflow.
 
