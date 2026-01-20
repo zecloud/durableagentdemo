@@ -164,7 +164,7 @@ def create_VideoScriptResearchAssistant_agent():
                     headers ={"x-functions-key": os.environ.get("arxivazfunckey")},
                 )
     return AzureOpenAIChatClient().as_agent(
-                name=" VideoScriptResearchAssistant",
+                name="VideoScriptResearchAssistant",
                 instructions="""You are a Video Script Research Assistant in an iterative workflow.
 
         Help brainstorm video concepts, angles, and approaches.  Gather relevant content using available tools (markitdown, arxiv). Extract key facts, examples, and visual opportunities with clear citations.
