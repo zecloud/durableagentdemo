@@ -191,7 +191,7 @@ app = AgentFunctionApp(
 
 @app.function_name("stream")
 @app.route(route="agent/stream/{conversation_id}", methods=["GET"])
-async def stream(req: func.HttpRequest) -> func.HttpResponse| StreamingResponse:
+async def stream(req: func.HttpRequest) ->  StreamingResponse:
     """Resume streaming from a specific cursor position for an existing session.
 
     This endpoint reads all currently available chunks from Redis for the given
@@ -234,11 +234,7 @@ async def stream(req: func.HttpRequest) -> func.HttpResponse| StreamingResponse:
             logger.info("Using SSE format for streaming response")
             return StreamingResponse(_streamsse_to_client(conversation_id, cursor, use_sse_format), media_type="text/event-stream")
 
-        else:
-            logger.info("Using plain text format for streaming response")
-            # Stream chunks from Redis
-            return await _streamplain_to_client(conversation_id, cursor, use_sse_format)
-
+       
     except Exception as ex:
         logger.error(f"Error in stream endpoint: {ex}", exc_info=True)
         return func.HttpResponse(
