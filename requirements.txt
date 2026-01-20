@@ -1,3 +1,4 @@
 agent-framework-azurefunctions
 azure-identity
 redis
+azurefunctions-extensions-http-fastapi
