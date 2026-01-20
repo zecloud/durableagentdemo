@@ -264,11 +264,13 @@ async def _streamsse_to_client(
             async for chunk in stream_handler.read_stream(conversation_id, cursor):
                 if chunk.error:
                     logger.warning(f"Stream error for {conversation_id}: {chunk.error}")
-                    return _format_error(chunk.error, use_sse_format)
+                    yield _format_error(chunk.error, use_sse_format)
+                    return
                    
 
                 if chunk.is_done:
-                    return _format_end_of_stream(chunk.entry_id, use_sse_format)
+                    yield _format_end_of_stream(chunk.entry_id, use_sse_format)
+                    return
                     
 
                 if chunk.text:
@@ -276,7 +278,8 @@ async def _streamsse_to_client(
 
         except Exception as ex:
             logger.error(f"Error reading from Redis: {ex}", exc_info=True)
-            return _format_error(str(ex), use_sse_format)
+            yield _format_error(str(ex), use_sse_format)
+            return
 
 
 
