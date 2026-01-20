@@ -28,6 +28,8 @@ from agent_framework.azure import (
     AgentResponseCallbackProtocol,
     AzureOpenAIChatClient,
 )
+from azurefunctions.extensions.http.fastapi import Request, StreamingResponse
+
 from azure.identity import AzureCliCredential
 from redis_stream_response_handler import RedisStreamResponseHandler, StreamChunk
 
@@ -189,7 +191,7 @@ app = AgentFunctionApp(
 
 @app.function_name("stream")
 @app.route(route="agent/stream/{conversation_id}", methods=["GET"])
-async def stream(req: func.HttpRequest) -> func.HttpResponse:
+async def stream(req: func.HttpRequest) -> func.HttpResponse| StreamingResponse:
     """Resume streaming from a specific cursor position for an existing session.
 
     This endpoint reads all currently available chunks from Redis for the given
@@ -228,9 +230,14 @@ async def stream(req: func.HttpRequest) -> func.HttpResponse:
         # Check Accept header to determine response format
         accept_header = req.headers.get("Accept", "")
         use_sse_format = "text/plain" not in accept_header.lower()
+        if use_sse_format:
+            logger.info("Using SSE format for streaming response")
+            return StreamingResponse(_streamsse_to_client(conversation_id, cursor, use_sse_format), media_type="text/event-stream")
 
-        # Stream chunks from Redis
-        return await _stream_to_client(conversation_id, cursor, use_sse_format)
+        else:
+            logger.info("Using plain text format for streaming response")
+            # Stream chunks from Redis
+            return await _streamplain_to_client(conversation_id, cursor, use_sse_format)
 
     except Exception as ex:
         logger.error(f"Error in stream endpoint: {ex}", exc_info=True)
@@ -239,8 +246,48 @@ async def stream(req: func.HttpRequest) -> func.HttpResponse:
             status_code=500,
         )
 
+async def _streamsse_to_client(
+    conversation_id: str,
+    cursor: str | None,
+    use_sse_format: bool,
+) -> StreamingResponse:
+    """Stream chunks from Redis to the HTTP response.
 
-async def _stream_to_client(
+    Args:
+        conversation_id: The conversation ID to stream from.
+        cursor: Optional cursor to resume from. If None, streams from the beginning.
+        use_sse_format: True to use SSE format, false for plain text.
+
+    Returns:
+        HTTP response with all currently available chunks.
+    """
+    
+    # Use context manager to ensure Redis client is properly closed
+    async with await get_stream_handler() as stream_handler:
+        try:
+            async for chunk in stream_handler.read_stream(conversation_id, cursor):
+                if chunk.error:
+                    logger.warning(f"Stream error for {conversation_id}: {chunk.error}")
+                    return _format_error(chunk.error, use_sse_format)
+                   
+
+                if chunk.is_done:
+                    return _format_end_of_stream(chunk.entry_id, use_sse_format)
+                    
+
+                if chunk.text:
+                    yield _format_chunk(chunk, use_sse_format)
+
+        except Exception as ex:
+            logger.error(f"Error reading from Redis: {ex}", exc_info=True)
+            return _format_error(str(ex), use_sse_format)
+
+
+
+    
+
+
+async def _streamplain_to_client(
     conversation_id: str,
     cursor: str | None,
     use_sse_format: bool,
