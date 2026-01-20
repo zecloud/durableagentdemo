@@ -21,7 +21,7 @@ from datetime import timedelta
 
 import azure.functions as func
 import redis.asyncio as aioredis
-from agent_framework import AgentResponseUpdate
+from agent_framework import AgentResponseUpdate,MCPStreamableHTTPTool
 from agent_framework.azure import (
     AgentCallbackContext,
     AgentFunctionApp,
@@ -30,7 +30,7 @@ from agent_framework.azure import (
 )
 from azure.identity import AzureCliCredential
 from redis_stream_response_handler import RedisStreamResponseHandler, StreamChunk
-from tools import get_local_events, get_weather_forecast
+
 
 logger = logging.getLogger(__name__)
 
@@ -148,31 +148,35 @@ class RedisStreamCallback(AgentResponseCallbackProtocol):
 redis_callback = RedisStreamCallback()
 
 
-# Create the travel planner agent
-def create_travel_agent():
-    """Create the TravelPlanner agent with tools."""
-    return AzureOpenAIChatClient(credential=AzureCliCredential()).as_agent(
-        name="TravelPlanner",
-        instructions="""You are an expert travel planner who creates detailed, personalized travel itineraries.
-When asked to plan a trip, you should:
-1. Create a comprehensive day-by-day itinerary
-2. Include specific recommendations for activities, restaurants, and attractions
-3. Provide practical tips for each destination
-4. Consider weather and local events when making recommendations
-5. Include estimated times and logistics between activities
+# Create the Video Script Research Assistant agent
+def create_VideoScriptResearchAssistant_agent():
+    """Create the Video Script Research Assistant agent with tools."""
+    with MCPStreamableHTTPTool(
+                name="markitdown", 
+                url=f"{os.environ.get("markitdownmcpazfuncurl")}/mcp",
+                headers ={"x-functions-key": os.environ.get("markitdownmcpazfunckey")},
+            ) as markitdownmcp_server:
+        with MCPStreamableHTTPTool(
+                    name="markitdown", 
+                    url=f"{os.environ.get("arxivmcpazfuncurl")}/mcp",
+                    headers ={"x-functions-key": os.environ.get("arxivazfunckey")},
+                ) as arxivmcp_server:
+            return AzureOpenAIChatClient().as_agent(
+                name=" VideoScriptResearchAssistant",
+                instructions="""You are a Video Script Research Assistant in an iterative workflow.
 
-Always use the available tools to get current weather forecasts and local events
-for the destination to make your recommendations more relevant and timely.
+        Help brainstorm video concepts, angles, and approaches.  Gather relevant content using available tools (markitdown, arxiv). Extract key facts, examples, and visual opportunities with clear citations.
 
-Format your response with clear headings for each day and include emoji icons
-to make the itinerary easy to scan and visually appealing.""",
-        tools=[get_weather_forecast, get_local_events],
-    )
+        Work iteratively:  ask questions, suggest directions, refine based on feedback, and dig deeper as needed.  Present findings organized and ready for the scriptwriter. 
+
+        Balance creativity in ideation with rigor in research.""",
+                tools=[markitdownmcp_server, arxivmcp_server],
+            )
 
 
 # Create AgentFunctionApp with the Redis callback
 app = AgentFunctionApp(
-    agents=[create_travel_agent()],
+    agents=[create_VideoScriptResearchAssistant_agent()],
     enable_health_check=True,
     default_callback=redis_callback,
     max_poll_retries=100,  # Increase for longer-running agents
@@ -180,7 +184,7 @@ app = AgentFunctionApp(
 
 
 # Custom streaming endpoint for reading from Redis
-# Use the standard /api/agents/TravelPlanner/run endpoint to start agent runs
+
 
 
 @app.function_name("stream")
