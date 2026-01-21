@@ -197,6 +197,41 @@ async def start_content_generation(
     req: func.HttpRequest,
     client: DurableOrchestrationClient,
 ) -> func.HttpResponse:
+    """
+    Start a human-in-the-loop (HITL) content generation orchestration.
+
+    This endpoint starts the durable function orchestration
+    ``content_generation_hitl_orchestration`` to generate content with
+    human approval steps.
+
+    Request body (JSON):
+      {
+        "topic": "<string, required>",
+        "max_review_attempts": <int, required>,
+        "approval_timeout_hours": <int or float, required>,
+        ... // additional fields may be provided and are passed through to the orchestration
+      }
+
+    - ``topic``: The main topic or subject for which content should be generated.
+    - ``max_review_attempts``: Maximum number of human review/approval cycles
+      before the orchestration terminates.
+    - ``approval_timeout_hours``: Number of hours to wait for human approval
+      before timing out each review step.
+
+    Responses:
+      202 Accepted:
+        {
+          "message": "HITL content generation orchestration started.",
+          "topic": "<string>",
+          "instanceId": "<durable orchestration instance id>",
+          "statusQueryGetUri": "<URL to query orchestration status>"
+        }
+
+      400 Bad Request:
+        {
+          "error": "<description of the validation or JSON parsing error>"
+        }
+    """
     try:
         body = req.get_json()
     except ValueError:
