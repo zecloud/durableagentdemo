@@ -18,7 +18,9 @@ Prerequisites:
 import logging
 import os
 from datetime import timedelta
-
+import json
+from collections.abc import Mapping
+from pydantic import BaseModel, ValidationError
 import azure.functions as func
 import redis.asyncio as aioredis
 from agent_framework import AgentResponseUpdate,MCPStreamableHTTPTool
@@ -28,6 +30,7 @@ from agent_framework.azure import (
     AgentResponseCallbackProtocol,
     AzureOpenAIChatClient,
 )
+from azure.durable_functions import DurableOrchestrationClient, DurableOrchestrationContext
 from azurefunctions.extensions.http.fastapi import Request, StreamingResponse
 
 from azure.identity import AzureCliCredential
@@ -149,7 +152,7 @@ class RedisStreamCallback(AgentResponseCallbackProtocol):
 # Create the Redis streaming callback
 redis_callback = RedisStreamCallback()
 
-
+AGENT_NAME="VideoScriptResearchAssistant"
 # Create the Video Script Research Assistant agent
 def create_VideoScriptResearchAssistant_agent():
     """Create the Video Script Research Assistant agent with tools."""
@@ -164,7 +167,7 @@ def create_VideoScriptResearchAssistant_agent():
                     headers ={"x-functions-key": os.environ.get("arxivazfunckey")},
                 )
     return AzureOpenAIChatClient().as_agent(
-                name="VideoScriptResearchAssistant",
+                name=AGENT_NAME,
                 instructions="""You are a Video Script Research Assistant in an iterative workflow.
 
         Help brainstorm video concepts, angles, and approaches.  Gather relevant content using available tools (markitdown, arxiv). Extract key facts, examples, and visual opportunities with clear citations.
@@ -173,6 +176,7 @@ def create_VideoScriptResearchAssistant_agent():
 
         Balance creativity in ideation with rigor in research.""",
                 tools=[markitdownmcp_server, arxivmcp_server],
+                response_format=GeneratedContent
             )
 
 
@@ -186,10 +190,144 @@ app = AgentFunctionApp(
 )
 
 
+@app.route(route="hitl/run", methods=["POST"])
+@app.durable_client_input(client_name="client")
+async def start_content_generation(
+    req: func.HttpRequest,
+    client: DurableOrchestrationClient,
+) -> func.HttpResponse:
+    try:
+        body = req.get_json()
+    except ValueError:
+        body = None
+
+    if not isinstance(body, Mapping):
+        return func.HttpResponse(
+            body=json.dumps({"error": "Request body must be valid JSON."}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    try:
+        payload =body
+    except ValidationError as exc:
+        return func.HttpResponse(
+            body=json.dumps({"error": f"Invalid content generation input: {exc}"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    instance_id = await client.start_new(
+        orchestration_function_name="content_generation_hitl_orchestration",
+        client_input=payload.model_dump(),
+    )
+
+    status_url = _build_status_url(req.url, instance_id, route="hitl")
+
+    payload_json = {
+        "message": "HITL content generation orchestration started.",
+        "topic": payload.topic,
+        "instanceId": instance_id,
+        "statusQueryGetUri": status_url,
+    }
+
+    return func.HttpResponse(
+        body=json.dumps(payload_json),
+        status_code=202,
+        mimetype="application/json",
+    )
+
+class GeneratedContent(BaseModel):
+    title: str
+    content: str
+
+@app.orchestration_trigger(context_name="context")
+def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
+    payload_raw = context.get_input()
+    if not isinstance(payload_raw, Mapping):
+        raise ValueError("Content generation input is required")
+
+    try:
+        payload = payload_raw
+    except ValidationError as exc:
+        raise ValueError(f"Invalid content generation input: {exc}") from exc
+
+    researcher = app.get_agent(context, AGENT_NAME)
+    researcher_thread = researcher.get_new_thread()
+
+    context.set_custom_status(f"Starting content generation for topic: {payload.topic}")
+
+    initial_raw = yield researcher.run(
+        messages=f"Write a short article about '{payload.topic}'.",
+        thread=researcher_thread,
+        options={"response_format": GeneratedContent},
+    )
+
+    content = initial_raw.try_parse_value(GeneratedContent)
+    logger.info("Type of content after extraction: %s", type(content))
+
+    if content is None:
+        raise ValueError("Agent returned no content after extraction.")
+
+    attempt = 0
+    while attempt < payload.max_review_attempts:
+        attempt += 1
+        context.set_custom_status(
+            f"Requesting human feedback. Iteration #{attempt}. Timeout: {payload.approval_timeout_hours} hour(s)."
+        )
+
+        yield context.call_activity("notify_user_for_approval", content.model_dump())
+
+        approval_task = context.wait_for_external_event(HUMAN_APPROVAL_EVENT)
+        timeout_task = context.create_timer(
+            context.current_utc_datetime + timedelta(hours=payload.approval_timeout_hours)
+        )
+
+        winner = yield context.task_any([approval_task, timeout_task])
+
+        if winner == approval_task:
+            timeout_task.cancel()  # type: ignore[attr-defined]
+            approval_payload = _parse_human_approval(approval_task.result)
+
+            if approval_payload.approved:
+                context.set_custom_status("Content approved by human reviewer. Publishing content...")
+                yield context.call_activity("publish_content", content.model_dump())
+                context.set_custom_status(
+                    f"Content published successfully at {context.current_utc_datetime:%Y-%m-%dT%H:%M:%S}"
+                )
+                return {"content": content.content}
+
+            context.set_custom_status("Content rejected by human reviewer. Incorporating feedback and regenerating...")
+            rewrite_prompt = (
+                "The content was rejected by a human reviewer. Please rewrite the article incorporating their feedback.\n\n"
+                f"Human Feedback: {approval_payload.feedback or 'No feedback provided.'}"
+            )
+            rewritten_raw = yield researcher.run(
+                messages=rewrite_prompt,
+                thread=researcher_thread,
+                options={"response_format": GeneratedContent},
+            )
+
+            content = rewritten_raw.try_parse_value(GeneratedContent)
+            if content is None:
+                raise ValueError("Agent returned no content after rewrite.")
+        else:
+            context.set_custom_status(
+                f"Human approval timed out after {payload.approval_timeout_hours} hour(s). Treating as rejection."
+            )
+            raise TimeoutError(f"Human approval timed out after {payload.approval_timeout_hours} hour(s).")
+
+    raise RuntimeError(f"Content could not be approved after {payload.max_review_attempts} iteration(s).")
+
+
+def _build_status_url(request_url: str, instance_id: str, *, route: str) -> str:
+    base_url, _, _ = request_url.partition("/api/")
+    if not base_url:
+        base_url = request_url.rstrip("/")
+    return f"{base_url}/api/{route}/status/{instance_id}"
+
+
 # Custom streaming endpoint for reading from Redis
-
-
-
 @app.function_name("stream")
 @app.route(route="agent/stream/{conversation_id}", methods=[[func.HttpMethod.GET]])
 async def stream(req: Request) ->  StreamingResponse:
@@ -291,108 +429,7 @@ async def _streamsse_to_client(
     
 
 
-# @app.function_name("stream")
-# @app.route(route="agent/stream/{conversation_id}", methods=["GET"])
-# async def stream(req: func.HttpRequest) -> func.HttpResponse:
-#     """Resume streaming from a specific cursor position for an existing session.
 
-#     This endpoint reads all currently available chunks from Redis for the given
-#     conversation ID, starting from the specified cursor (or beginning if no cursor).
-
-#     Use this endpoint to resume a stream after disconnection. Pass the conversation ID
-#     and optionally a cursor (Redis entry ID) to continue from where you left off.
-
-#     Query Parameters:
-#         cursor (optional): Redis stream entry ID to resume from. If not provided, starts from beginning.
-
-#     Response Headers:
-#         Content-Type: text/event-stream or text/plain based on Accept header
-#         x-conversation-id: The conversation/thread ID
-
-#     SSE Event Fields (when Accept: text/event-stream):
-#         id: Redis stream entry ID (use as cursor for resumption)
-#         event: "message" for content, "done" for completion, "error" for errors
-#         data: The text content or status message
-#     """
-#     try:
-#         conversation_id = req.route_params.get("conversation_id")
-#         if not conversation_id:
-#             return func.HttpResponse(
-#                 "Conversation ID is required.",
-#                 status_code=400,
-#             )
-
-#         # Get optional cursor from query string
-#         cursor = req.params.get("cursor")
-
-#         logger.info(
-#             f"Resuming stream for conversation {conversation_id} from cursor: {cursor or '(beginning)'}"
-#         )
-
-#         # Check Accept header to determine response format
-#         accept_header = req.headers.get("Accept", "")
-#         use_sse_format = "text/plain" not in accept_header.lower()
-
-#         # Stream chunks from Redis
-#         return await _stream_to_client(conversation_id, cursor, use_sse_format)
-
-#     except Exception as ex:
-#         logger.error(f"Error in stream endpoint: {ex}", exc_info=True)
-#         return func.HttpResponse(
-#             f"Internal server error: {str(ex)}",
-#             status_code=500,
-#         )
-
-
-# async def _stream_to_client(
-#     conversation_id: str,
-#     cursor: str | None,
-#     use_sse_format: bool,
-# ) -> func.HttpResponse:
-#     """Stream chunks from Redis to the HTTP response.
-
-#     Args:
-#         conversation_id: The conversation ID to stream from.
-#         cursor: Optional cursor to resume from. If None, streams from the beginning.
-#         use_sse_format: True to use SSE format, false for plain text.
-
-#     Returns:
-#         HTTP response with all currently available chunks.
-#     """
-#     chunks = []
-
-#     # Use context manager to ensure Redis client is properly closed
-#     async with await get_stream_handler() as stream_handler:
-#         try:
-#             async for chunk in stream_handler.read_stream(conversation_id, cursor):
-#                 if chunk.error:
-#                     logger.warning(f"Stream error for {conversation_id}: {chunk.error}")
-#                     chunks.append(_format_error(chunk.error, use_sse_format))
-#                     break
-
-#                 if chunk.is_done:
-#                     chunks.append(_format_end_of_stream(chunk.entry_id, use_sse_format))
-#                     break
-
-#                 if chunk.text:
-#                     chunks.append(_format_chunk(chunk, use_sse_format))
-
-#         except Exception as ex:
-#             logger.error(f"Error reading from Redis: {ex}", exc_info=True)
-#             chunks.append(_format_error(str(ex), use_sse_format))
-
-#     # Return all chunks
-#     response_body = "".join(chunks)
-
-#     return func.HttpResponse(
-#         body=response_body,
-#         mimetype="text/event-stream" if use_sse_format else "text/plain; charset=utf-8",
-#         headers={
-#             "Cache-Control": "no-cache",
-#             "Connection": "keep-alive",
-#             "x-conversation-id": conversation_id,
-#         },
-#     )
 
 
 def _format_chunk(chunk: StreamChunk, use_sse_format: bool) -> str:
