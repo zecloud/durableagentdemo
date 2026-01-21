@@ -245,7 +245,7 @@ async def start_content_generation(
         )
 
     try:
-        payload =body
+        payload =ContentGenerationInput.model_validate(body)
     except ValidationError as exc:
         return func.HttpResponse(
             body=json.dumps({"error": f"Invalid content generation input: {exc}"}),
@@ -272,6 +272,11 @@ async def start_content_generation(
         status_code=202,
         mimetype="application/json",
     )
+
+class ContentGenerationInput(BaseModel):
+    topic: str
+    max_review_attempts: int = 3
+    approval_timeout_hours: float = 72
 
 class GeneratedContent(BaseModel):
     """Structured content produced by the agent.
@@ -324,7 +329,7 @@ def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
         raise ValueError("Content generation input is required")
 
     try:
-        payload = payload_raw
+        payload = payload = ContentGenerationInput.model_validate(payload_raw)
     except ValidationError as exc:
         raise ValueError(f"Invalid content generation input: {exc}") from exc
 
