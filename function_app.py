@@ -461,9 +461,20 @@ async def _streamsse_to_client(
 
 
 
-    
+@app.activity_trigger(input_name="content")
+def notify_user_for_approval(content: dict) -> None:
+    model = GeneratedContent.model_validate(content)
+    logger.info("NOTIFICATION: Please review the following content for approval:")
+    logger.info("Title: %s", model.title or "(untitled)")
+    logger.info("Content: %s", model.content)
+    logger.info("Use the approval endpoint to approve or reject this content.") 
 
-
+@app.activity_trigger(input_name="content")
+def publish_content(content: dict) -> None:
+    model = GeneratedContent.model_validate(content)
+    logger.info("PUBLISHING: Content has been published successfully:")
+    logger.info("Title: %s", model.title or "(untitled)")
+    logger.info("Content: %s", model.content)
 
 
 
