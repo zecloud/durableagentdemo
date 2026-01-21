@@ -179,7 +179,7 @@ def create_VideoScriptResearchAssistant_agent():
 # Create AgentFunctionApp with the Redis callback
 app = AgentFunctionApp(
     agents=[create_VideoScriptResearchAssistant_agent()],
-    enable_health_check=True,
+    enable_health_check=False,
     default_callback=redis_callback,
     enable_http_endpoints=False,
     max_poll_retries=100,  # Increase for longer-running agents
