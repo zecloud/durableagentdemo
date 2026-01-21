@@ -153,6 +153,7 @@ class RedisStreamCallback(AgentResponseCallbackProtocol):
 redis_callback = RedisStreamCallback()
 
 AGENT_NAME="VideoScriptResearchAssistant"
+HUMAN_APPROVAL_EVENT = "HumanApproval"
 # Create the Video Script Research Assistant agent
 def create_VideoScriptResearchAssistant_agent():
     """Create the Video Script Research Assistant agent with tools."""
@@ -241,6 +242,40 @@ class GeneratedContent(BaseModel):
     title: str
     content: str
 
+class HumanApproval(BaseModel):
+    approved: bool
+    feedback: str = ""
+
+def _parse_human_approval(raw: Any) -> HumanApproval:
+    if isinstance(raw, Mapping):
+        return HumanApproval.model_validate(raw)
+
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if not stripped:
+            return HumanApproval(approved=False, feedback="")
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, Mapping):
+                return HumanApproval.model_validate(parsed)
+        except json.JSONDecodeError:
+            logger.debug(
+                "[HITL] Approval payload is not valid JSON; using string heuristics.",
+                exc_info=True,
+            )
+
+        affirmative = {"true", "yes", "approved", "y", "1"}
+        negative = {"false", "no", "rejected", "n", "0"}
+        lower = stripped.lower()
+        if lower in affirmative:
+            return HumanApproval(approved=True, feedback="")
+        if lower in negative:
+            return HumanApproval(approved=False, feedback="")
+        return HumanApproval(approved=False, feedback=stripped)
+
+    raise ValueError("Approval payload must be a JSON object or string.")
+
+
 @app.orchestration_trigger(context_name="context")
 def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
     payload_raw = context.get_input()
@@ -258,7 +293,7 @@ def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
     context.set_custom_status(f"Starting content generation for topic: {payload.topic}")
 
     initial_raw = yield researcher.run(
-        messages=f"Write a short article about '{payload.topic}'.",
+        messages=f"Think step by step starting with step 1:'{payload.topic}'.",
         thread=researcher_thread,
         options={"response_format": GeneratedContent},
     )
@@ -299,7 +334,7 @@ def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
 
             context.set_custom_status("Content rejected by human reviewer. Incorporating feedback and regenerating...")
             rewrite_prompt = (
-                "The content was rejected by a human reviewer. Please rewrite the article incorporating their feedback.\n\n"
+                "Ask user if he approves the content or if he want more research.\n\n"
                 f"Human Feedback: {approval_payload.feedback or 'No feedback provided.'}"
             )
             rewritten_raw = yield researcher.run(
