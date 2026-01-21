@@ -152,7 +152,7 @@ class RedisStreamCallback(AgentResponseCallbackProtocol):
 # Create the Redis streaming callback
 redis_callback = RedisStreamCallback()
 
-AGENT_NAME="VideoScriptResearchAssistant"
+AGENT_NAME = "VideoScriptResearchAssistant"
 HUMAN_APPROVAL_EVENT = "HumanApproval"
 # Create the Video Script Research Assistant agent
 def create_VideoScriptResearchAssistant_agent():
