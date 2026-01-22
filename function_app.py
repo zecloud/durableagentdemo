@@ -209,10 +209,10 @@ app = AgentFunctionApp(
 )
 
 
-@app.route(route="hitl/run", methods=["POST"])
+@app.route(route="hitl/run", methods=[func.HttpMethod.POST])
 @app.durable_client_input(client_name="client")
 async def start_content_generation(
-    req: func.HttpRequest,
+    req: Request,
     client: DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """
