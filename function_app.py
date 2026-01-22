@@ -430,7 +430,7 @@ async def stream(req: Request) -> StreamingResponse:
         data: The text content or status message
     """
     try:
-        conversation_id = req.route_params.get("conversation_id")
+        conversation_id = req.path_params.get("conversation_id")
         if not conversation_id:
             return JSONResponse(
                 {"error": "Conversation ID is required. "},
