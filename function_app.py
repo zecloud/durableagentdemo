@@ -30,6 +30,7 @@ from agent_framework.azure import (
     AgentResponseCallbackProtocol,
     AzureOpenAIChatClient,
 )
+from typing import Any
 from azure.durable_functions import DurableOrchestrationClient, DurableOrchestrationContext
 from azurefunctions.extensions.http.fastapi import Request, StreamingResponse
 
