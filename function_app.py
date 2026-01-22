@@ -225,16 +225,16 @@ async def start_content_generation(
     Request body (JSON):
       {
         "topic": "<string, required>",
-        "max_review_attempts": <int, required>,
-        "approval_timeout_hours": <int or float, required>,
+        "max_review_attempts": <int, optional, defaults to 3>,
+        "approval_timeout_hours": <int or float, optional, defaults to 72>,
         ... // additional fields may be provided and are passed through to the orchestration
       }
 
     - ``topic``: The main topic or subject for which content should be generated.
     - ``max_review_attempts``: Maximum number of human review/approval cycles
-      before the orchestration terminates.
+      before the orchestration terminates. Optional; if omitted, defaults to 3.
     - ``approval_timeout_hours``: Number of hours to wait for human approval
-      before timing out each review step.
+      before timing out each review step. Optional; if omitted, defaults to 72.
 
     Responses:
       202 Accepted:
