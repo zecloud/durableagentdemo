@@ -410,7 +410,7 @@ def _build_status_url(request_url: str, instance_id: str, *, route: str) -> str:
 
 # Custom streaming endpoint for reading from Redis
 @app.function_name("stream")
-@app.route(route="agent/stream/{conversation_id}", methods=[[func.HttpMethod.GET]])
+@app.route(route="agent/stream/{conversation_id}", methods=[func.HttpMethod.GET])
 async def stream(req: Request) -> StreamingResponse:
     """Resume streaming from a specific cursor position for an existing session.
 
