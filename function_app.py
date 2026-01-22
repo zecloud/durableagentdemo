@@ -380,7 +380,7 @@ def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
 
             context.set_custom_status("Content rejected by human reviewer. Incorporating feedback and regenerating...")
             rewrite_prompt = (
-                "Ask user if he approves the content or if he want more research.\n\n"
+                "Ask the user if they approve the content or if they want more research.\n\n"
                 f"Human Feedback: {approval_payload.feedback or 'No feedback provided.'}"
             )
             rewritten_raw = yield researcher.run(
