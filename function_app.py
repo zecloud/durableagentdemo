@@ -257,19 +257,17 @@ async def start_content_generation(
         body = None
 
     if not isinstance(body, Mapping):
-        return func.HttpResponse(
-            body=json.dumps({"error": "Request body must be valid JSON."}),
-            status_code=400,
-            mimetype="application/json",
+        return JSONResponse(
+            {"error": "Request body must be valid JSON."},
+            status_code=400
         )
 
     try:
         payload = ContentGenerationInput.model_validate(body)
     except ValidationError as exc:
-        return func.HttpResponse(
-            body=json.dumps({"error": f"Invalid content generation input: {exc}"}),
-            status_code=400,
-            mimetype="application/json",
+        return JSONResponse(
+            {"error": f"Invalid content generation input: {exc}"},
+            status_code=400
         )
 
     instance_id = await client.start_new(
@@ -277,7 +275,7 @@ async def start_content_generation(
         client_input=payload.model_dump(),
     )
 
-    status_url = _build_status_url(req.url, instance_id, route="hitl")
+    status_url = _build_status_url(str(req.url), instance_id, route="hitl")
 
     payload_json = {
         "message": "HITL content generation orchestration started.",
@@ -434,9 +432,9 @@ async def stream(req: Request) -> StreamingResponse:
     try:
         conversation_id = req.route_params.get("conversation_id")
         if not conversation_id:
-            return func.HttpResponse(
-                "Conversation ID is required.",
-                status_code=400,
+            return JSONResponse(
+                {"error": "Conversation ID is required. "},
+                status_code=400
             )
 
         # Get optional cursor from query string
@@ -460,9 +458,9 @@ async def stream(req: Request) -> StreamingResponse:
        
     except Exception as ex:
         logger.error(f"Error in stream endpoint: {ex}", exc_info=True)
-        return func.HttpResponse(
-            f"Internal server error: {str(ex)}",
-            status_code=500,
+        return JSONResponse(
+            {"error": f"Internal server error: {str(ex)}"},
+            status_code=500
         )
 
 async def _streamsse_to_client(
