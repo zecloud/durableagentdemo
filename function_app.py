@@ -329,7 +329,7 @@ def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
         raise ValueError("Content generation input is required")
 
     try:
-        payload = payload = ContentGenerationInput.model_validate(payload_raw)
+        payload = ContentGenerationInput.model_validate(payload_raw)
     except ValidationError as exc:
         raise ValueError(f"Invalid content generation input: {exc}") from exc
 
