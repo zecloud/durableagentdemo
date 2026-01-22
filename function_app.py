@@ -263,7 +263,7 @@ async def start_content_generation(
         )
 
     try:
-        payload =ContentGenerationInput.model_validate(body)
+        payload = ContentGenerationInput.model_validate(body)
     except ValidationError as exc:
         return func.HttpResponse(
             body=json.dumps({"error": f"Invalid content generation input: {exc}"}),
