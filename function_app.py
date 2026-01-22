@@ -329,9 +329,9 @@ def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
         payload = ContentGenerationInput.model_validate(payload_raw)
     except ValidationError as exc:
         raise ValueError(f"Invalid content generation input: {exc}") from exc
-
+    instance_id = context.instance_id
     researcher = app.get_agent(context, AGENT_NAME)
-    researcher_thread = researcher.get_new_thread()
+    researcher_thread = researcher.get_new_thread(service_thread_id=instance_id)
 
     context.set_custom_status(f"Starting content generation for topic: {payload.topic}")
 
