@@ -32,7 +32,7 @@ from agent_framework.azure import (
 )
 from typing import Any
 from azure.durable_functions import DurableOrchestrationClient, DurableOrchestrationContext
-from azurefunctions.extensions.http.fastapi import Request, StreamingResponse
+from azurefunctions.extensions.http.fastapi import Request, StreamingResponse,JSONResponse
 
 from azure.identity import AzureCliCredential
 from redis_stream_response_handler import RedisStreamResponseHandler, StreamChunk
@@ -215,7 +215,7 @@ app = AgentFunctionApp(
 async def start_content_generation(
     req: Request,
     client: DurableOrchestrationClient,
-) -> func.HttpResponse:
+) -> JSONResponse:
     """
     Start a human-in-the-loop (HITL) content generation orchestration.
 
@@ -286,10 +286,8 @@ async def start_content_generation(
         "statusQueryGetUri": status_url,
     }
 
-    return func.HttpResponse(
-        body=json.dumps(payload_json),
-        status_code=202,
-        mimetype="application/json",
+    return JSONResponse(
+        payload_json
     )
 
 
