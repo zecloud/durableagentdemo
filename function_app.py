@@ -252,7 +252,7 @@ async def start_content_generation(
         }
     """
     try:
-        body = req.get_json()
+        body = await req.json()
     except ValueError:
         body = None
 
@@ -440,7 +440,7 @@ async def stream(req: Request) -> StreamingResponse:
             )
 
         # Get optional cursor from query string
-        cursor = req.params.get("cursor")
+        cursor = req.query_params.get("cursor")
 
         logger.info(
             f"Resuming stream for conversation {conversation_id} from cursor: {cursor or '(beginning)'}"
