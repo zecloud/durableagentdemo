@@ -280,7 +280,7 @@ async def start_content_generation(
     payload_json = {
         "message": "HITL content generation orchestration started.",
         "topic": payload.topic,
-        "instanceId": instance_id,
+        "conversation_id": instance_id,
         "statusQueryGetUri": status_url,
     }
 
