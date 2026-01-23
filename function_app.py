@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 REDIS_CONNECTION_STRING = os.environ.get("REDIS_CONNECTION_STRING", "redis://localhost:6379")
 REDIS_STREAM_TTL_MINUTES = int(os.environ.get("REDIS_STREAM_TTL_MINUTES", "10"))
 
-
+import ssl
 async def get_stream_handler() -> RedisStreamResponseHandler:
     """Create a new Redis stream handler for each request.
 
@@ -55,8 +55,7 @@ async def get_stream_handler() -> RedisStreamResponseHandler:
     redis_client = aioredis.from_url(
         REDIS_CONNECTION_STRING,
         encoding="utf-8",
-        ssl=True,
-        ssl_cert_reqs=None,
+        ssl_cert_reqs=ssl.CERT_NONE,
         decode_responses=True,
     )
 
