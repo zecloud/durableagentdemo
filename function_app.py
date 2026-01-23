@@ -55,7 +55,9 @@ async def get_stream_handler() -> RedisStreamResponseHandler:
     redis_client = aioredis.from_url(
         REDIS_CONNECTION_STRING,
         encoding="utf-8",
-        decode_responses=False,
+        ssl=True,
+        ssl_cert_reqs=None,
+        decode_responses=True,
     )
 
     return RedisStreamResponseHandler(
