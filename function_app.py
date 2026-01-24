@@ -36,7 +36,7 @@ from azurefunctions.extensions.http.fastapi import Request, StreamingResponse,JS
 
 from azure.identity import AzureCliCredential
 from redis_stream_response_handler import RedisStreamResponseHandler, StreamChunk
-
+from httpx import AsyncClient
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 REDIS_CONNECTION_STRING = os.environ.get("REDIS_CONNECTION_STRING", "redis://localhost:6379")
 REDIS_STREAM_TTL_MINUTES = int(os.environ.get("REDIS_STREAM_TTL_MINUTES", "10"))
 
-import ssl
+
 async def get_stream_handler() -> RedisStreamResponseHandler:
     """Create a new Redis stream handler for each request.
 
@@ -55,7 +55,6 @@ async def get_stream_handler() -> RedisStreamResponseHandler:
     redis_client = aioredis.from_url(
         REDIS_CONNECTION_STRING,
         encoding="utf-8",
-        ssl_cert_reqs=ssl.CERT_NONE,
         decode_responses=True,
     )
 
@@ -159,15 +158,30 @@ HUMAN_APPROVAL_EVENT = "HumanApproval"
 # Create the Video Script Research Assistant agent
 def create_VideoScriptResearchAssistant_agent():
     """Create the Video Script Research Assistant agent with tools."""
+    m_auth_headers = {
+        "x-functions-key": str(os.environ.get("markitdownmcpazfunckey")),
+    }
+
+    # Create HTTP client with authentication headers
+    m_http_client = AsyncClient(headers=m_auth_headers)
+    
     markitdownmcp_server=MCPStreamableHTTPTool(
                 name="markitdown", 
                 url=f"{os.environ.get("markitdownmcpazfuncurl")}/mcp",
-                headers ={"x-functions-key": os.environ.get("markitdownmcpazfunckey")},
+                http_client=m_http_client
+                #headers ={"x-functions-key": os.environ.get("markitdownmcpazfunckey")},
             )
+    a_auth_headers = {
+        "x-functions-key": str(os.environ.get("arxivazfunckey")),
+    }
+
+    # Create HTTP client with authentication headers
+    a_http_client = AsyncClient(headers=a_auth_headers)
     arxivmcp_server = MCPStreamableHTTPTool(
                     name="arxiv", 
                     url=f"{os.environ.get("arxivmcpazfuncurl")}/mcp",
-                    headers ={"x-functions-key": os.environ.get("arxivazfunckey")},
+                    http_client=a_http_client
+                    #headers ={"x-functions-key": os.environ.get("arxivazfunckey")},
                 )
     return AzureOpenAIChatClient().as_agent(
                 name=AGENT_NAME,
@@ -178,7 +192,7 @@ def create_VideoScriptResearchAssistant_agent():
         Work iteratively:  ask questions, suggest directions, refine based on feedback, and dig deeper as needed.  Present findings organized and ready for the scriptwriter. 
 
         Balance creativity in ideation with rigor in research.""",
-                tools=[markitdownmcp_server, arxivmcp_server],
+                tools=[markitdownmcp_server,arxivmcp_server],
                 response_format=GeneratedContent
             )
 
@@ -409,7 +423,7 @@ def _build_status_url(request_url: str, instance_id: str, *, route: str) -> str:
 # Custom streaming endpoint for reading from Redis
 @app.function_name("stream")
 @app.route(route="agent/stream/{conversation_id}", methods=[func.HttpMethod.GET])
-async def stream(req: Request) -> StreamingResponse:
+async def stream(req: Request) -> StreamingResponse|JSONResponse:
     """Resume streaming from a specific cursor position for an existing session.
 
     This endpoint reads all currently available chunks from Redis for the given
