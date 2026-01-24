@@ -423,7 +423,7 @@ def _build_status_url(request_url: str, instance_id: str, *, route: str) -> str:
 # Custom streaming endpoint for reading from Redis
 @app.function_name("stream")
 @app.route(route="agent/stream/{conversation_id}", methods=[func.HttpMethod.GET])
-async def stream(req: Request) -> StreamingResponse|JSONResponse:
+async def stream(req: Request) -> StreamingResponse:
     """Resume streaming from a specific cursor position for an existing session.
 
     This endpoint reads all currently available chunks from Redis for the given
@@ -447,7 +447,7 @@ async def stream(req: Request) -> StreamingResponse|JSONResponse:
     try:
         conversation_id = req.path_params.get("conversation_id")
         if not conversation_id:
-            return JSONResponse(
+            return StreamingResponse(
                 {"error": "Conversation ID is required. "},
                 status_code=400
             )
@@ -473,7 +473,7 @@ async def stream(req: Request) -> StreamingResponse|JSONResponse:
        
     except Exception as ex:
         logger.error(f"Error in stream endpoint: {ex}", exc_info=True)
-        return JSONResponse(
+        return StreamingResponse(
             {"error": f"Internal server error: {str(ex)}"},
             status_code=500
         )
