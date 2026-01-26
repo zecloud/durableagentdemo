@@ -192,7 +192,7 @@ def create_VideoScriptResearchAssistant_agent():
         Work iteratively:  ask questions, suggest directions, refine based on feedback, and dig deeper as needed.  Present findings organized and ready for the scriptwriter. 
 
         Balance creativity in ideation with rigor in research.""",
-                tools=[markitdownmcp_server,arxivmcp_server],
+                tools=[arxivmcp_server],
                 response_format=GeneratedContent
             )
 
@@ -346,7 +346,7 @@ def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
         raise ValueError(f"Invalid content generation input: {exc}") from exc
     instance_id = context.instance_id
     researcher = app.get_agent(context, AGENT_NAME)
-    researcher_thread = researcher.get_new_thread(service_thread_id=instance_id)
+    researcher_thread = researcher.get_new_thread()#service_thread_id=instance_id
 
     context.set_custom_status(f"Starting content generation for topic: {payload.topic}")
 
