@@ -353,64 +353,64 @@ def content_generation_hitl_orchestration(context: DurableOrchestrationContext):
     initial_raw = yield researcher.run(
         messages=f"Think step by step starting with step 1:'{payload.topic}'.",
         thread=researcher_thread,
-        options={"response_format": GeneratedContent},
+        #options={"response_format": GeneratedContent},
     )
 
-    content = initial_raw.try_parse_value(GeneratedContent)
-    logger.info("Type of content after extraction: %s", type(content))
+    #content = initial_raw.try_parse_value(GeneratedContent)
+    #logger.info("Type of content after extraction: %s", type(content))
 
-    if content is None:
-        raise ValueError("Agent returned no content after extraction.")
+    # if content is None:
+    #     raise ValueError("Agent returned no content after extraction.")
 
-    attempt = 0
-    while attempt < payload.max_review_attempts:
-        attempt += 1
-        context.set_custom_status(
-            f"Requesting human feedback. Iteration #{attempt}. Timeout: {payload.approval_timeout_hours} hour(s)."
-        )
+    # attempt = 0
+    # while attempt < payload.max_review_attempts:
+    #     attempt += 1
+    #     context.set_custom_status(
+    #         f"Requesting human feedback. Iteration #{attempt}. Timeout: {payload.approval_timeout_hours} hour(s)."
+    #     )
 
-        yield context.call_activity("notify_user_for_approval", content.model_dump())
+    #     yield context.call_activity("notify_user_for_approval", content.model_dump())
 
-        approval_task = context.wait_for_external_event(HUMAN_APPROVAL_EVENT)
-        timeout_task = context.create_timer(
-            context.current_utc_datetime + timedelta(hours=payload.approval_timeout_hours)
-        )
+    #     approval_task = context.wait_for_external_event(HUMAN_APPROVAL_EVENT)
+    #     timeout_task = context.create_timer(
+    #         context.current_utc_datetime + timedelta(hours=payload.approval_timeout_hours)
+    #     )
 
-        winner = yield context.task_any([approval_task, timeout_task])
+    #     winner = yield context.task_any([approval_task, timeout_task])
 
-        if winner == approval_task:
-            timeout_task.cancel()  # type: ignore[attr-defined]
-            approval_payload = _parse_human_approval(approval_task.result)
+    #     if winner == approval_task:
+    #         timeout_task.cancel()  # type: ignore[attr-defined]
+    #         approval_payload = _parse_human_approval(approval_task.result)
 
-            if approval_payload.approved:
-                context.set_custom_status("Content approved by human reviewer. Publishing content...")
-                yield context.call_activity("publish_content", content.model_dump())
-                context.set_custom_status(
-                    f"Content published successfully at {context.current_utc_datetime:%Y-%m-%dT%H:%M:%S}"
-                )
-                return {"content": content.content}
+    #         if approval_payload.approved:
+    #             context.set_custom_status("Content approved by human reviewer. Publishing content...")
+    #             yield context.call_activity("publish_content", content.model_dump())
+    #             context.set_custom_status(
+    #                 f"Content published successfully at {context.current_utc_datetime:%Y-%m-%dT%H:%M:%S}"
+    #             )
+    #             return {"content": content.content}
 
-            context.set_custom_status("Content rejected by human reviewer. Incorporating feedback and regenerating...")
-            rewrite_prompt = (
-                "Ask the user if they approve the content or if they want more research.\n\n"
-                f"Human Feedback: {approval_payload.feedback or 'No feedback provided.'}"
-            )
-            rewritten_raw = yield researcher.run(
-                messages=rewrite_prompt,
-                thread=researcher_thread,
-                options={"response_format": GeneratedContent},
-            )
+    #         context.set_custom_status("Content rejected by human reviewer. Incorporating feedback and regenerating...")
+    #         rewrite_prompt = (
+    #             "Ask the user if they approve the content or if they want more research.\n\n"
+    #             f"Human Feedback: {approval_payload.feedback or 'No feedback provided.'}"
+    #         )
+    #         rewritten_raw = yield researcher.run(
+    #             messages=rewrite_prompt,
+    #             thread=researcher_thread,
+    #             options={"response_format": GeneratedContent},
+    #         )
 
-            content = rewritten_raw.try_parse_value(GeneratedContent)
-            if content is None:
-                raise ValueError("Agent returned no content after rewrite.")
-        else:
-            context.set_custom_status(
-                f"Human approval timed out after {payload.approval_timeout_hours} hour(s). Treating as rejection."
-            )
-            raise TimeoutError(f"Human approval timed out after {payload.approval_timeout_hours} hour(s).")
+    #         content = rewritten_raw.try_parse_value(GeneratedContent)
+    #         if content is None:
+    #             raise ValueError("Agent returned no content after rewrite.")
+    #     else:
+    #         context.set_custom_status(
+    #             f"Human approval timed out after {payload.approval_timeout_hours} hour(s). Treating as rejection."
+    #         )
+    #         raise TimeoutError(f"Human approval timed out after {payload.approval_timeout_hours} hour(s).")
 
-    raise RuntimeError(f"Content could not be approved after {payload.max_review_attempts} iteration(s).")
+    # raise RuntimeError(f"Content could not be approved after {payload.max_review_attempts} iteration(s).")
 
 
 def _build_status_url(request_url: str, instance_id: str, *, route: str) -> str:
