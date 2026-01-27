@@ -482,7 +482,7 @@ async def _streamsse_to_client(
     conversation_id: str,
     cursor: str | None,
     use_sse_format: bool,
-) -> StreamingResponse:
+) :
     """Stream chunks from Redis to the HTTP response.
 
     Args:
@@ -490,7 +490,7 @@ async def _streamsse_to_client(
         cursor: Optional cursor to resume from. If None, streams from the beginning.
         use_sse_format: True to use SSE format, false for plain text.
 
-    Returns:
+    yield:
         HTTP response with all currently available chunks.
     """
     
@@ -501,12 +501,12 @@ async def _streamsse_to_client(
                 if chunk.error:
                     logger.warning(f"Stream error for {conversation_id}: {chunk.error}")
                     yield _format_error(chunk.error, use_sse_format)
-                    break
+                    return
                    
 
                 if chunk.is_done:
                     yield _format_end_of_stream(chunk.entry_id, use_sse_format)
-                    break
+                    return
                     
 
                 if chunk.text:
